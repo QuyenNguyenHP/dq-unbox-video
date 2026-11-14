@@ -106,6 +106,16 @@ Rules for **segments** (played one after another; the sum of `dur` ≈ `duration
 
 **Length**: if `duration_tight + tail` > 60s, set `voice_speed` (max 1.15). The render divides all times by it, so do not rescale anything yourself. If it would need more than 1.15, re-run analyze with `--max-gap 0.2`, or tell the user which part to cut.
 
+### 3b. Write the post caption `_work/<x>/caption.txt`
+Every finished video comes with a ready-to-paste caption for TikTok / Facebook Reels (the render copies it to `OUTPUT/<x>_caption.txt` and to Drive next to the video). Vietnamese, same fun tone, **short: 3 lines, about 200 characters before the hashtags** (the user found ~330 too long):
+```
+<hook line, a question or a bold claim, 1 emoji>
+<product name: the features as keywords, separated by commas>
+<(warning if needed) + CTA question to drive comments, 1 emoji>
+#<product> #DQTech #unboxing #review #congnghe #<1 topic tag: dientu, iot, robot, esp32...>
+```
+Emoji are fine in the caption (only on-screen text can't show them), 2-3 in total. About 6 hashtags, lowercase except #DQTech. Facts must match what the video says; don't add claims. If the product could be misused (RF/NFC tools, cameras, jammers...), keep a "chỉ dùng với thiết bị của bạn" line.
+
 ### 4. Render and check
 ```
 .venv\Scripts\python.exe tools\render.py "<ten-video>"
@@ -114,7 +124,7 @@ Rules for **segments** (played one after another; the sum of `dur` ≈ `duration
 Look at `check.jpg`: does each frame match what is being said at that time, is the text readable and not overlapping, are there no black or frozen frames? Fix `edit.json` and re-render if needed (at most 2 rounds without asking the user).
 
 ### 5. Report
-Tell the user in a few lines: final length, the Drive/OUTPUT path, which music track, and anything you guessed (for example subtitle words you were unsure about). Send the finished mp4 with SendUserFile if that tool is available. Phone viewers only receive files ≤ 30 MB, so when the mp4 is bigger, make a 720p preview in the scratchpad (`ffmpeg -i OUTPUT/<x>.mp4 -vf scale=720:-2 -c:v libx264 -preset veryfast -crf 26 -c:a aac -b:a 128k -movflags +faststart <scratchpad>/<x>_preview.mp4`) and send that, noting that the full 1080p is on Drive. Ask if they want changes ("đổi nhạc", "cắt bớt đoạn X", "đổi chữ hook").
+Tell the user in a few lines: final length, the Drive/OUTPUT path, which music track, **the caption in a code block so it is easy to copy on the phone**, and anything you guessed (for example subtitle words you were unsure about). Send the finished mp4 with SendUserFile if that tool is available. Phone viewers only receive files ≤ 30 MB, so when the mp4 is bigger, make a 720p preview in the scratchpad (`ffmpeg -i OUTPUT/<x>.mp4 -vf scale=720:-2 -c:v libx264 -preset veryfast -crf 26 -c:a aac -b:a 128k -movflags +faststart <scratchpad>/<x>_preview.mp4`) and send that, noting that the full 1080p is on Drive. Ask if they want changes ("đổi nhạc", "cắt bớt đoạn X", "đổi chữ hook").
 
 ## Revisions
 Edit `_work/<x>/edit.json` and re-run render only; there is no need to re-run analyze unless the voice file changed. To change the music: `"music": "<file in MUSIC>"` or `null` for none.

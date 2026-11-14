@@ -279,6 +279,10 @@ def main():
     out = OUTPUT / out_name
     shutil.copy(tmp, out)
     print(f"Đã xuất: {out}  ({media_duration(out):.1f}s)")
+    cap = work / "caption.txt"
+    if cap.exists() and not a.draft:
+        shutil.copy(cap, OUTPUT / f"{proj.name}_caption.txt")
+        print(f"Caption: {OUTPUT / f'{proj.name}_caption.txt'}")
 
     # ảnh kiểm tra: 1 khung mỗi 2.5s
     run([FFMPEG, "-y", "-v", "error", "-i", "final.mp4", "-vf",
@@ -295,6 +299,8 @@ def main():
             dd.mkdir(parents=True, exist_ok=True)
             shutil.copy(out, dd / out_name)
             print(f"Đã chép lên Google Drive: {dd / out_name}")
+            if (OUTPUT / f"{proj.name}_caption.txt").exists():
+                shutil.copy(OUTPUT / f"{proj.name}_caption.txt", dd / f"{proj.name}_caption.txt")
         else:
             print(f"CẢNH BÁO: không thấy thư mục Google Drive {dd}, chưa chép lên Drive.")
 
