@@ -16,14 +16,14 @@ Cần: Claude Code, git, kết nối mạng. Google Drive for desktop là tuỳ 
 
 **Windows** (kể cả laptop ARM như Snapdragon):
 ```powershell
-git clone https://github.com/<tài-khoản>/dq-unbox-video.git
+git clone https://github.com/QuyenNguyenHP/dq-unbox-video.git
 cd dq-unbox-video
 powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/<tài-khoản>/dq-unbox-video.git
+git clone https://github.com/QuyenNguyenHP/dq-unbox-video.git
 cd dq-unbox-video
 bash setup.sh
 ```
