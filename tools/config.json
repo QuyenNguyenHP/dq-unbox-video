@@ -1,0 +1,16 @@
+{
+  "_ghi_chu": "Cấu hình chung. Ghi đè riêng cho từng máy trong tools/config.local.json (không đưa lên git). 'auto' = tự tìm.",
+  "ffmpeg": "auto",
+  "ffprobe": "auto",
+  "whisper_model": "small",
+  "language": "vi",
+  "font_file": "auto",
+  "font_name": "auto",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "music_volume": 0.22,
+  "drive_folder": "DQ Video",
+  "input_dir": "auto",
+  "drive_dir": "auto"
+}

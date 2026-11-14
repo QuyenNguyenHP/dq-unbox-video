@@ -1,0 +1,27 @@
+# Môi trường & mô hình (mỗi máy tự cài bằng setup)
+.venv/
+.models/
+__pycache__/
+*.pyc
+
+# Cấu hình riêng từng máy
+tools/config.local.json
+tools/bin/
+
+# Dữ liệu video: không đưa lên git
+INPUT/*
+!INPUT/HUONG_DAN.txt
+OUTPUT/
+_work/
+
+# Nhạc nền tự tạo / nhạc riêng
+MUSIC/*
+!MUSIC/README.txt
+
+# Claude Code: chỉ chia sẻ skill
+.claude/*
+!.claude/skills/
+
+*.exe
+.DS_Store
+Thumbs.db

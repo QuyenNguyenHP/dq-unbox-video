@@ -1,0 +1,12 @@
+CÁCH DÙNG (mỗi video là một thư mục con trong INPUT)
+Có thể dùng INPUT trên Google Drive: My Drive > DQ Video > INPUT (tải từ điện thoại lên được)
+
+1. Tạo thư mục mới, đặt tên ngắn, không dấu, ví dụ:  esp32-s3-cam
+2. Copy vào thư mục đó:
+   - Tất cả clip đã quay (.mp4 / .mov), quay dọc 9:16 càng tốt
+   - 1 file thu âm giọng (.m4a / .mp3 / .wav), nên đặt tên: voice.m4a
+   - (tuỳ chọn) kichban.md nếu Claude đã viết kịch bản
+3. Nhắn trong chat:  dựng video esp32-s3-cam
+
+Muốn có kịch bản trước khi quay thì nhắn:  viết kịch bản <tên sản phẩm> + vài thông tin
+Video xong nằm ở OUTPUT\ và được chép lên Google Drive.
