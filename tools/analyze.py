@@ -14,7 +14,7 @@ import math
 import shutil
 from pathlib import Path
 
-from common import (AUDIO_EXT, CFG, FFMPEG, ROOT, VIDEO_EXT, VOICE_HINTS, media_duration, probe,
+from common import (WORK, AUDIO_EXT, CFG, FFMPEG, ROOT, VIDEO_EXT, VOICE_HINTS, media_duration, probe,
                     project_dir, run, work_dir)
 
 
@@ -243,11 +243,12 @@ def main():
     ap.add_argument("--lang", default=None, help="ngôn ngữ giọng đọc (mặc định theo config, 'vi')")
     ap.add_argument("--cut", action="append", default=[], help="bỏ đoạn giọng gốc từ-đến (giây), lặp lại được")
     ap.add_argument("--reuse", action="store_true", help="dùng lại kết quả nhận dạng lần trước (nhanh)")
+    ap.add_argument("--variant", default=None, help="bản ngôn ngữ khác, vd. vi -> _work/<tên>/vi, xuất <tên>_VI.mp4")
     ap.add_argument("--voice", default=None, help="file giọng đọc nằm ngoài thư mục dự án (vd. giọng AI)")
     a = ap.parse_args()
 
     proj = project_dir(a.name)
-    work = work_dir(proj)
+    work = work_dir(proj, a.variant)
     (work / "fonts").mkdir(exist_ok=True)
     shutil.copy(CFG["font_file"], work / "fonts" / "font.ttf")
     clips, voice = find_inputs(proj)
@@ -269,7 +270,7 @@ def main():
         info = clip_info(c, key)
         if not info:
             continue
-        make_proxy(info, work)
+        make_proxy(info, WORK / proj.name)  # proxy dùng chung cho mọi bản ngôn ngữ
         if not a.skip_sheets:
             info["sheets"], info["sheet_step"] = contact_sheets(info, sheets, i)
         infos[key] = info

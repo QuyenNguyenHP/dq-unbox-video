@@ -154,8 +154,9 @@ def project_dir(name):
     raise SystemExit(1)
 
 
-def work_dir(proj):
-    w = WORK / proj.name
+def work_dir(proj, variant=None):
+    """_work/<dự án>/ ; bản ngôn ngữ khác (vd. "vi") dùng _work/<dự án>/<variant>/ và chung proxy."""
+    w = WORK / proj.name / variant if variant else WORK / proj.name
     w.mkdir(parents=True, exist_ok=True)
     return w
 

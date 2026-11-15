@@ -221,11 +221,13 @@ def pick_music(edit, name):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
+    ap.add_argument("--variant", default=None, help="bản ngôn ngữ khác, vd. vi (xem analyze.py --variant)")
     ap.add_argument("--draft", action="store_true", help="dựng nhanh chất lượng thấp để xem thử")
     a = ap.parse_args()
 
     proj = project_dir(a.name)
-    work = work_dir(proj)
+    work = work_dir(proj, a.variant)
+    base = proj.name + (f"_{a.variant.upper()}" if a.variant else "")
     edit = json.loads((work / "edit.json").read_text("utf-8"))
     clips = json.loads((work / "clips.json").read_text("utf-8"))
     tr = json.loads((work / "transcript.json").read_text("utf-8"))
@@ -325,7 +327,7 @@ def main():
                   f"{last}[lg]overlay=x=W-w-{LOGO_X}:y={LOGO_Y if H > W else 30}[vl]")
         last = "[vl]"
     graph += f";{last}null[vout]"
-    out_name = proj.name + ("_draft" if a.draft else "") + ".mp4"
+    out_name = base + ("_draft" if a.draft else "") + ".mp4"
     tmp = work / "final.mp4"
     run(cmd + ["-filter_complex", graph, "-map", "[vout]", "-map", "[aout]", "-t", f"{D:.3f}",
                "-c:v", "libx264", "-preset", "veryfast" if a.draft else "medium", "-crf", "28" if a.draft else "19",
@@ -338,8 +340,8 @@ def main():
     print(f"Đã xuất: {out}  ({media_duration(out):.1f}s)")
     cap = work / "caption.txt"
     if cap.exists() and not a.draft:
-        shutil.copy(cap, OUTPUT / f"{proj.name}_caption.txt")
-        print(f"Caption: {OUTPUT / f'{proj.name}_caption.txt'}")
+        shutil.copy(cap, OUTPUT / f"{base}_caption.txt")
+        print(f"Caption: {OUTPUT / f'{base}_caption.txt'}")
 
     # ảnh kiểm tra: 1 khung mỗi 2.5s
     run([FFMPEG, "-y", "-v", "error", "-i", "final.mp4", "-vf",
@@ -367,8 +369,8 @@ def main():
                     else:
                         time.sleep(5)
             print(f"Đã chép lên Google Drive: {dst}")
-            if (OUTPUT / f"{proj.name}_caption.txt").exists():
-                shutil.copy(OUTPUT / f"{proj.name}_caption.txt", dd / f"{proj.name}_caption.txt")
+            if (OUTPUT / f"{base}_caption.txt").exists():
+                shutil.copy(OUTPUT / f"{base}_caption.txt", dd / f"{base}_caption.txt")
         else:
             print(f"CẢNH BÁO: không thấy thư mục Google Drive {dd}, chưa chép lên Drive.")
 

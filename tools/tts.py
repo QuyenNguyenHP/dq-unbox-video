@@ -23,8 +23,9 @@ def main():
     ap.add_argument("name")
     ap.add_argument("--voice", default="en-US-EmmaNeural")
     ap.add_argument("--rate", default="+8%")
+    ap.add_argument("--variant", default=None, help="vd. vi -> _work/<tên>/vi/voiceover.txt")
     a = ap.parse_args()
-    work = work_dir(project_dir(a.name))
+    work = work_dir(project_dir(a.name), a.variant)
     text = (work / "voiceover.txt").read_text("utf-8").strip()
     out = work / "voice_ai.mp3"
     asyncio.run(speak(text, a.voice, a.rate, out))
