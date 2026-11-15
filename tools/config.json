@@ -12,5 +12,20 @@
   "music_volume": 0.22,
   "drive_folder": "DQ Video",
   "input_dir": "auto",
-  "drive_dir": "auto"
+  "drive_dir": "auto",
+  "voice_aliases": {
+    "emma": "en-US-EmmaNeural",
+    "hoaimy": "vi-VN-HoaiMyNeural",
+    "ngochuyen": "vbee:hn_female_ngochuyen_full_48k-fhg",
+    "maiphuong": "vbee:hn_female_maiphuong_vdts_48k-fhg",
+    "ngoclan": "vbee:hn_female_hermer_stor_48k-fhg",
+    "nguyetduong": "vbee:hn_female_lenka_stor_48k-phg",
+    "hachi": "vbee:hn_female_hachi_book_22k-vc",
+    "ngochuyen2": "vbee:hn_female_ngochuyen_full_24k-st",
+    "ngochuyen_nangcao": "vbee:hn_female_ngochuyen_full_24k-stl"
+  },
+  "default_voice": {
+    "en": "emma",
+    "vi": "ngochuyen"
+  }
 }
