@@ -1,6 +1,6 @@
 ---
 name: dq-unbox-video
-description: Write the script for, and auto-edit, short vertical (9:16, 50-60s) unboxing/review videos of electronics, embedded boards, robots and tech gear for TikTok and Facebook Reels, using the user's own hand-and-product clips and their single-take voice recording. Use when the user asks to write a script ("viết kịch bản", "lên kịch bản") for a product video, or to edit/build/render a video ("dựng video", "làm video", "ghép video") from a folder in DQ Video/INPUT. Not for long-form videos or for videos with the user on camera.
+description: Write the script for, and auto-edit, short (9:16 by default, or 16:9 / original ratio on request; 40-60s) unboxing/review videos of electronics, embedded boards, robots and tech gear for TikTok and Facebook Reels, using the user's own hand-and-product clips and their single-take voice recording, or an AI voiceover (e.g. English female) or music only when there is no recording; also works for travel/event clips. Use when the user asks to write a script ("viết kịch bản", "lên kịch bản") for a product video, or to edit/build/render a video ("dựng video", "làm video", "ghép video") from a folder in DQ Video/INPUT. Not for long-form videos or for videos with the user on camera.
 ---
 
 # DQ Unbox Video
@@ -75,6 +75,7 @@ Hesitations inside a sentence (long "ừm", pauses) are removed automatically fr
 All times are on the trimmed-voice timeline (`duration_tight`). Schema:
 ```json
 {
+  "aspect": "9:16",
   "voice_speed": 1.0,
   "music": "auto",
   "music_volume": 0.22,
@@ -86,23 +87,26 @@ All times are on the trimmed-voice timeline (`duration_tight`). Schema:
   "overlays": [{"start": 0.0, "end": 2.4, "text": "...", "style": "hook"}]
 }
 ```
+**Frame / aspect ratio** (`"aspect"`): default `"9:16"` (1080x1920, TikTok/Reels). When the user asks to keep the original ratio ("giữ nguyên tỷ lệ", "16:9", "quay ngang"), use `"16:9"` (1920x1080) for horizontal footage, or `"source"` to follow the majority orientation of the clips used. `"1:1"` and `"4:5"` also work. When the clip has the same orientation as the frame, leave out `fit`/`scale`/`cx`: the clip fills the frame (`cover`). Text sizes and positions adapt automatically (subtitles near the bottom, labels at the top, logo top-right). Remember the user's choice for that video in edit.json, and ask before changing it on later videos.
+
 Rules for **segments** (played one after another; the sum of `dur` ≈ `duration_tight + tail`, and the last one is stretched automatically):
 - Match the picture to the words: hook → the most striking shot (product hero close-up or the coolest demo moment); unbox → box opening and contents; each feature → the shot showing that part or behaviour; projects → demo or best wide shots; CTA → a clean hero shot.
 - Cut on sentence/chunk boundaries from the transcript. Each cut is 1.2-3.5s, and there is a new shot at least every ~3s to keep the pace fast.
 - `src` = second in the source clip, from the sheets. Make sure `src + dur*speed` fits in the clip (the last frame is held otherwise). Do not reuse the same moment twice unless you have to.
 - `speed` 1.5-3 for slow actions (peeling, plugging in, long pans). `zoom` 0.06-0.12 on static shots. `fit`: `cover` fills the frame (default for vertical clips; for horizontal clips use `cx` to aim the crop); `blur` puts the frame on a blurred background (default for horizontal clips).
-- Horizontal footage (common: DJI on a desk): use `"fit": "blur", "scale": 1.5` for hand-held close-ups and `1.8` for wider shots, so the product stays big. Aim with `cx` (0 = left, 1 = right): estimate the product's horizontal centre `c` (0..1) from the sheet, then `cx ≈ (c - 0.5/scale) / (1 - 1/scale)`, clamped to 0..1.
+- Horizontal footage in a 9:16 frame (common: DJI on a desk): use `"fit": "blur", "scale": 1.5` for hand-held close-ups and `1.8` for wider shots, so the product stays big. Aim with `cx` (0 = left, 1 = right): estimate the product's horizontal centre `c` (0..1) from the sheet, then `cx ≈ (c - 0.5/scale) / (1 - 1/scale)`, clamped to 0..1.
 - Skip shaky or blurry moments.
 
 **subtitles**: start from `_work/<x>/subs_draft.json` and fix the recognition errors using the script and common sense: Vietnamese diacritics, tech names (ESP32, Arduino, Raspberry Pi, USB-C, LiDAR...), numbers. Keep the timings and keep each chunk ≤ ~30 characters. Leave it `[]` only if the draft is already perfect.
 
 **overlays** (no emoji, the font cannot draw them):
 - `hook`: big yellow top text, 0 → ~2.5s, ≤ 7 words.
-- `label`: rounded pill at the top naming each feature while it is being talked about. Start with ①②③ (or "1.") to get a numbered white circle: "① WiFi + BLE 5.0". Brand colours: alternate `"color": "orange"` (default) and `"color": "blue"` between features.
+- `label`: big yellow text with a black outline at the top, naming each feature while it is being talked about. Number them "① WiFi + BLE 5.0" (rendered as "1. WiFi + BLE 5.0").
 - `big`: huge centre text for a price or key number ("150K", "240MHz"), 1-2s.
-- `cta`: blue rounded pill in the centre for the last ~2-3s ("Follow để xem thêm!").
+- `cta`: big yellow text in the centre for the last ~2-3s ("Follow để xem thêm!").
 
-**Branding:** the DQ Tech logo (`assets/logo.png`) is added automatically to the top-right corner of every video, below the TikTok/Reels top bar. Never turn it off unless the user asks (`"logo": false`). The brand colours (orange `#F44911`, blue `#0891DE`) live in `BRAND` in `tools/render.py`.
+**Labels are always big yellow text, for every kind of video** (the user decided against the orange/blue pills). The old pill style still exists behind `"label_style": "pill"`; use it only if the user asks for it again.
+**Logo:** tech videos (electronics, boards, robots, IT gear) get the DQ Tech logo (`assets/logo.png`) automatically in the top-right corner, below the TikTok/Reels top bar. Non-tech videos (travel, events, food, daily life...): set `"brand": false` in edit.json, which means no logo.
 
 **Length**: if `duration_tight + tail` > 60s, set `voice_speed` (max 1.15). The render divides all times by it, so do not rescale anything yourself. If it would need more than 1.15, re-run analyze with `--max-gap 0.2`, or tell the user which part to cut.
 
@@ -125,6 +129,19 @@ Look at `check.jpg`: does each frame match what is being said at that time, is t
 
 ### 5. Report
 Tell the user in a few lines: final length, the Drive/OUTPUT path, which music track, **the caption in a code block so it is easy to copy on the phone**, and anything you guessed (for example subtitle words you were unsure about). Send the finished mp4 with SendUserFile if that tool is available. Phone viewers only receive files ≤ 30 MB, so when the mp4 is bigger, make a 720p preview in the scratchpad (`ffmpeg -i OUTPUT/<x>.mp4 -vf scale=720:-2 -c:v libx264 -preset veryfast -crf 26 -c:a aac -b:a 128k -movflags +faststart <scratchpad>/<x>_preview.mp4`) and send that, noting that the full 1080p is on Drive. Ask if they want changes ("đổi nhạc", "cắt bớt đoạn X", "đổi chữ hook").
+
+## Mode C: no user voice (AI voiceover or music only)
+
+When the folder has clips but no voice recording, or the user asks for a voiceover "giọng AI / giọng nữ / tiếng Anh", or music only:
+- Clips can be anything (travel, events, not only tech). Duplicate uploads like `IMG_5400 (1).MOV` with the same size are skipped automatically.
+- First run `analyze.py "<x>"` (no voice is fine) to get proxies and frame sheets, and look at all sheets to understand the story.
+- **AI voiceover**: write `_work/<x>/voiceover.txt` (plain spoken text, no markup; ~110-140 English words ≈ 40-50s, or ~170 Vietnamese syllables), in the house tone, hook first, CTA last, facts only from what is visible or well known (say "usually" for schedules). Then:
+  ```
+  .venv\Scripts\python.exe tools\tts.py "<x>" --voice en-US-EmmaNeural --rate +5%
+  .venv\Scripts\python.exe tools\analyze.py "<x>" --voice _work\<x>\voice_ai.mp3 --lang en --no-tighten --skip-sheets
+  ```
+  Voices: `en-US-EmmaNeural` (female, cheerful; the user's choice for English), `en-US-AvaNeural`, `en-US-AndrewNeural` (male), `vi-VN-HoaiMyNeural` / `vi-VN-NamMinhNeural` (Vietnamese; use `--lang vi`). tts.py needs internet (Microsoft Edge TTS). Then continue with steps 2-5 as usual; subtitles, labels and caption are in the voiceover's language.
+- **Music only**: skip the voiceover; segments alone set the length (aim 25-45s, cuts 1.5-3s on the strongest moments); leave `subtitles` empty, keep a hook and a CTA overlay. The music is louder automatically.
 
 ## Revisions
 Edit `_work/<x>/edit.json` and re-run render only; there is no need to re-run analyze unless the voice file changed. To change the music: `"music": "<file in MUSIC>"` or `null` for none.

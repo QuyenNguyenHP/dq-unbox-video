@@ -24,6 +24,7 @@ import json
 import random
 import shutil
 import sys
+import time
 
 from common import CFG, FFMPEG, MUSIC, OUTPUT, ROOT, ass_time, media_duration, project_dir, run, work_dir
 
@@ -31,7 +32,30 @@ W, H, FPS = CFG["width"], CFG["height"], CFG["fps"]
 FONT = CFG["font_name"]
 BOLD = "-1" if CFG.get("font_bold") else "0"
 
-ASS_HEADER = f"""[Script Info]
+ASPECTS = {"9:16": (1080, 1920), "16:9": (1920, 1080), "1:1": (1080, 1080), "4:5": (1080, 1350)}
+# vị trí/cỡ chữ theo khung: (Sub size, Sub MarginV, hook size, hook MarginV, label MarginV, label_y size, big, cta_y)
+LAYOUTS = {"tall": (72, 420, 96, 300, 330, 84, 150, 96),
+           "wide": (60, 60, 80, 50, 50, 70, 130, 80)}
+LAYOUT = LAYOUTS["tall"]
+
+
+def set_canvas(aspect, clips, segs):
+    """Đặt khung hình: "9:16" (mặc định), "16:9", "1:1", "4:5" hoặc "source" (theo clip gốc)."""
+    global W, H, LAYOUT
+    if aspect == "source":
+        used = [clips[s["clip"]] for s in segs if s["clip"] in clips]
+        wide = sum(1 for c in used if c["orientation"] == "ngang")
+        aspect = "16:9" if wide * 2 >= len(used) else "9:16"
+    W, H = ASPECTS.get(aspect, (CFG["width"], CFG["height"]))
+    LAYOUT = LAYOUTS["wide" if W > H else "tall"]
+    if W > H:
+        BADGE_STYLES["label"]["y"] = 50
+    return aspect
+
+
+def ass_header():
+    sub, sub_mv, hook, hook_mv, lab_mv, lab_y, big, cta_y = LAYOUT
+    return f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {W}
 PlayResY: {H}
@@ -40,11 +64,13 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,{FONT},72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,6,3,2,90,90,420,1
-Style: hook,{FONT},96,&H0000E6FF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,8,4,8,70,70,300,1
-Style: label,{FONT},66,&H00FFFFFF,&H00FFFFFF,&H00008CFF,&H00000000,{BOLD},0,0,0,100,100,0,0,3,16,0,8,90,90,330,1
-Style: big,{FONT},150,&H0000E6FF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,10,5,5,60,60,0,1
+Style: Sub,{FONT},{sub},&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,6,3,2,90,90,{sub_mv},1
+Style: hook,{FONT},{hook},&H0000E6FF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,8,4,8,70,70,{hook_mv},1
+Style: label,{FONT},66,&H00FFFFFF,&H00FFFFFF,&H00008CFF,&H00000000,{BOLD},0,0,0,100,100,0,0,3,16,0,8,90,90,{lab_mv},1
+Style: big,{FONT},{big},&H0000E6FF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,10,5,5,60,60,0,1
 Style: cta,{FONT},68,&H00000000,&H00FFFFFF,&H0000E6FF,&H00000000,{BOLD},0,0,0,100,100,0,0,3,18,0,5,90,90,0,1
+Style: label_y,{FONT},{lab_y},&H0000E6FF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,8,4,8,70,70,{lab_mv},1
+Style: cta_y,{FONT},{cta_y},&H0000E6FF,&H00FFFFFF,&H00000000,&H96000000,{BOLD},0,0,0,100,100,0,0,1,9,5,5,70,70,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -57,12 +83,17 @@ def ass_text(t):
     return t.replace("{", "(").replace("}", ")").replace("\n", r"\N")
 
 
-def write_ass(path, subs, overlays, k):
-    out = [ASS_HEADER]
+def write_ass(path, subs, overlays, k, pills=False):
+    out = [ass_header()]
     for o in overlays:
         style = o.get("style", "label")
         if style in BADGE_STYLES:
-            continue  # vẽ bằng PNG bo tròn (make_badges)
+            if pills:
+                continue  # vẽ bằng PNG bo tròn màu thương hiệu (make_badges)
+            style += "_y"  # mặc định: chữ vàng to viền đen, không khung
+            circled = "①②③④⑤⑥⑦⑧⑨"
+            if o["text"][:1] in circled:  # font không có ①: đổi thành "1."
+                o = dict(o, text=f"{circled.index(o['text'][0]) + 1}. {o['text'][1:].strip()}")
         out.append(f"Dialogue: 1,{ass_time(o['start'] / k)},{ass_time(o['end'] / k)},{style},,0,0,0,,"
                    f"{POP}{ass_text(o['text'])}")
     for s in subs:
@@ -119,7 +150,9 @@ def make_badge(text, color, size, path):
     return img.size
 
 
-def make_badges(overlays, work, k):
+def make_badges(overlays, work, k, pills=False):
+    if not pills:
+        return []
     bdir = work / "badges"
     bdir.mkdir(exist_ok=True)
     items = []
@@ -145,7 +178,8 @@ def render_segment(seg, clip, outdur, dst, draft):
     need = outdur * speed
     if src >= clip["duration"] - 0.1:
         src = max(0.0, clip["duration"] - need)
-    fit = seg.get("fit") or ("cover" if clip["orientation"] == "doc" else "blur")
+    same = (clip["orientation"] == "ngang") == (W > H)  # clip cùng chiều với khung -> lấp đầy
+    fit = seg.get("fit") or ("cover" if same else "blur")
     zoom = float(seg.get("zoom", 0.0))
     cx, cy = float(seg.get("cx", 0.5)), float(seg.get("cy", 0.5))
     fgs = float(seg.get("scale", 1.0))  # blur: phóng khung chính (1.0 = vừa ngang, 1.5 = to hơn, cắt hai bên)
@@ -199,6 +233,8 @@ def main():
     voice_d = tr["duration_tight"] / k
     tail = float(edit.get("tail", 0.6))
     segs = edit["segments"]
+    aspect = set_canvas(edit.get("aspect", "9:16"), clips, segs)
+    print(f"Khung hình: {aspect} ({W}x{H})")
 
     # --- kiểm tra ---
     problems = []
@@ -213,6 +249,8 @@ def main():
     if sum(durs) < D:
         durs[-1] += D - sum(durs)
     print(f"Giọng {voice_d:.2f}s, tổng video {D:.2f}s, {len(segs)} đoạn cắt")
+    if voice_d <= 0:
+        D = sum(durs)
 
     # --- dựng từng đoạn hình ---
     seg_dir = work / "segs"
@@ -229,18 +267,36 @@ def main():
     run([FFMPEG, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "concat.txt", "-c", "copy", "video.mp4"], cwd=work)
 
     # --- phụ đề + chữ ---
-    subs = edit.get("subtitles") or json.loads((work / "subs_draft.json").read_text("utf-8"))
-    write_ass(work / "subs.ass", subs, edit.get("overlays", []), k)
+    subs = edit.get("subtitles")
+    if not subs and (work / "subs_draft.json").exists():
+        subs = json.loads((work / "subs_draft.json").read_text("utf-8"))
+    subs = subs or []
+    brand = bool(edit.get("brand", True))  # false = video không phải kỹ thuật: không logo
+    # nhãn: mặc định chữ vàng to viền đen cho mọi video; "label_style": "pill" = khung bo tròn màu thương hiệu
+    pills = edit.get("label_style", "yellow") == "pill"
+    write_ass(work / "subs.ass", subs, edit.get("overlays", []), k, pills)
 
     # --- âm thanh + xuất ---
     music = pick_music(edit, proj.name)
-    mv = float(edit.get("music_volume", CFG.get("music_volume", 0.22)))
+    has_voice = voice_d > 0 and (work / "voice_tight.wav").exists()
+    # không có giọng: nhạc là âm thanh chính nên to hơn
+    mv = float(edit.get("music_volume", CFG.get("music_volume", 0.22) if has_voice else 0.85))
     fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
     voice_chain = (f"[1:a]{'atempo=%.4f,' % k if abs(k - 1) > 1e-3 else ''}highpass=f=80,afftdn=nf=-30,"
                    f"acompressor=threshold=0.125:ratio=3:attack=5:release=120:makeup=2,"
                    f"loudnorm=I=-14:TP=-1.5:LRA=9,{fmt},apad=whole_dur={D:.3f}")
-    cmd = [FFMPEG, "-y", "-v", "error", "-i", "video.mp4", "-i", "voice_tight.wav"]
-    if music:
+    cmd = [FFMPEG, "-y", "-v", "error", "-i", "video.mp4"]
+    if not has_voice:
+        if music:
+            cmd += ["-stream_loop", "-1", "-i", str(music)]
+            graph = (f"[1:a]{fmt},atrim=0:{D:.3f},asetpts=N/SR/TB,volume={mv},afade=t=in:d=0.3,"
+                     f"afade=t=out:st={max(0, D - 1.5):.3f}:d=1.5,alimiter=limit=0.95[aout];")
+            print(f"Nhạc nền (không có giọng): {music.name}")
+        else:
+            cmd += ["-f", "lavfi", "-t", f"{D:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
+            graph = "[1:a]anull[aout];"
+    elif music:
+        cmd += ["-i", "voice_tight.wav"]
         cmd += ["-stream_loop", "-1", "-i", str(music)]
         graph = (f"{voice_chain},asplit=2[vo][sc];"
                  f"[2:a]{fmt},atrim=0:{D:.3f},asetpts=N/SR/TB,volume={mv},afade=t=in:d=0.4,"
@@ -249,12 +305,13 @@ def main():
                  f"[vo][mud]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[aout];")
         print(f"Nhạc nền: {music.name}")
     else:
+        cmd += ["-i", "voice_tight.wav"]
         graph = f"{voice_chain},alimiter=limit=0.95[aout];"
     # --- chữ (ASS) + nhãn bo tròn + logo ---
-    idx = 3 if music else 2
+    idx = 3 if (has_voice and music) else 2
     graph += "[0:v]ass=subs.ass:fontsdir=fonts[v0]"
     last = "[v0]"
-    for j, (png, s0, s1, x, y) in enumerate(make_badges(edit.get("overlays", []), work, k)):
+    for j, (png, s0, s1, x, y) in enumerate(make_badges(edit.get("overlays", []), work, k, pills)):
         cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{D:.3f}", "-i", str(png)]
         fo = max(s0, s1 - 0.15)
         graph += (f";[{idx}:v]format=rgba,fade=t=in:st={s0:.3f}:d=0.15:alpha=1,"
@@ -262,10 +319,10 @@ def main():
                   f"{last}[b{j}]overlay=x={x}:y={y}:enable='between(t,{s0:.3f},{s1:.3f})'[v{j + 1}]")
         last = f"[v{j + 1}]"
         idx += 1
-    if LOGO.exists() and edit.get("logo", True):
+    if LOGO.exists() and edit.get("logo", brand):
         cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{D:.3f}", "-i", str(LOGO)]
         graph += (f";[{idx}:v]scale={LOGO_W}:-1,format=rgba,colorchannelmixer=aa=0.95[lg];"
-                  f"{last}[lg]overlay=x=W-w-{LOGO_X}:y={LOGO_Y}[vl]")
+                  f"{last}[lg]overlay=x=W-w-{LOGO_X}:y={LOGO_Y if H > W else 30}[vl]")
         last = "[vl]"
     graph += f";{last}null[vout]"
     out_name = proj.name + ("_draft" if a.draft else "") + ".mp4"
@@ -286,9 +343,9 @@ def main():
 
     # ảnh kiểm tra: 1 khung mỗi 2.5s
     run([FFMPEG, "-y", "-v", "error", "-i", "final.mp4", "-vf",
-         "fps=0.4,scale=216:-2,drawtext=fontfile=fonts/font.ttf:text='%{eif\\:t\\:d}s':x=6:y=6:fontsize=24:"
+         "select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,2.5)',scale=216:-2,drawtext=fontfile=fonts/font.ttf:text='%{eif\\:t\\:d}s':x=6:y=6:fontsize=24:"
          "fontcolor=yellow:box=1:boxcolor=black@0.7,tile=8x3:padding=4:color=gray",
-         "-frames:v", "1", "-q:v", "4", "check.jpg"], cwd=work)
+         "-fps_mode", "vfr", "-frames:v", "1", "-q:v", "4", "check.jpg"], cwd=work)
     print(f"Ảnh kiểm tra: {work / 'check.jpg'}")
 
     drive = CFG.get("drive_dir")
@@ -297,8 +354,19 @@ def main():
         dd = Path(drive)
         if dd.parent.exists():
             dd.mkdir(parents=True, exist_ok=True)
-            shutil.copy(out, dd / out_name)
-            print(f"Đã chép lên Google Drive: {dd / out_name}")
+            dst = dd / out_name
+            for attempt in range(6):  # file cũ trên Drive có thể đang bị khoá (đang đồng bộ/đang mở)
+                try:
+                    shutil.copy(out, dst)
+                    break
+                except PermissionError:
+                    if attempt == 5:
+                        dst = dd / (out.stem + time.strftime("_%H%M") + out.suffix)
+                        shutil.copy(out, dst)
+                        print("CẢNH BÁO: file cũ trên Drive đang bị khoá, đã lưu bản mới với tên khác.")
+                    else:
+                        time.sleep(5)
+            print(f"Đã chép lên Google Drive: {dst}")
             if (OUTPUT / f"{proj.name}_caption.txt").exists():
                 shutil.copy(OUTPUT / f"{proj.name}_caption.txt", dd / f"{proj.name}_caption.txt")
         else:

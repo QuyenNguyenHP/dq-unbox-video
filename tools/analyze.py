@@ -32,6 +32,17 @@ def find_inputs(proj):
         if h:
             voice = h[0]
     clips = sorted([f for f in vids if f != voice], key=lambda f: f.name.lower())
+    # bỏ bản trùng do tải lên 2 lần: "IMG_5400 (1).MOV" cùng dung lượng với "IMG_5400.MOV"
+    import re
+    seen, uniq = {}, []
+    for f in sorted(clips, key=lambda f: (bool(re.search(r" \(\d+\)$", f.stem)), f.name.lower())):
+        k = (re.sub(r" \(\d+\)$", "", f.stem).lower(), f.stat().st_size)
+        if k in seen:
+            print(f"  bỏ qua bản trùng: {f.name}")
+            continue
+        seen[k] = f
+        uniq.append(f)
+    clips = sorted(uniq, key=lambda f: f.name.lower())
     return clips, voice
 
 
@@ -232,6 +243,7 @@ def main():
     ap.add_argument("--lang", default=None, help="ngôn ngữ giọng đọc (mặc định theo config, 'vi')")
     ap.add_argument("--cut", action="append", default=[], help="bỏ đoạn giọng gốc từ-đến (giây), lặp lại được")
     ap.add_argument("--reuse", action="store_true", help="dùng lại kết quả nhận dạng lần trước (nhanh)")
+    ap.add_argument("--voice", default=None, help="file giọng đọc nằm ngoài thư mục dự án (vd. giọng AI)")
     a = ap.parse_args()
 
     proj = project_dir(a.name)
@@ -239,11 +251,12 @@ def main():
     (work / "fonts").mkdir(exist_ok=True)
     shutil.copy(CFG["font_file"], work / "fonts" / "font.ttf")
     clips, voice = find_inputs(proj)
+    if a.voice:  # ví dụ giọng AI tạo bằng tools/tts.py
+        voice = Path(a.voice)
     if not clips:
         raise SystemExit(f"Không có clip video nào trong {proj}")
-    if not voice:
-        raise SystemExit(f"Không tìm thấy file thu âm giọng trong {proj} (đặt file audio, ví dụ voice.m4a)")
-    print(f"Dự án: {proj.name}\nGiọng đọc: {voice.name}\nSố clip: {len(clips)}")
+    print(f"Dự án: {proj.name}\nGiọng đọc: {voice.name if voice else '(không có - video chỉ nhạc nền)'}\n"
+          f"Số clip: {len(clips)}")
 
     # --- clips ---
     sheets = work / "sheets"
@@ -263,6 +276,15 @@ def main():
         print(f"  [{i}] {key}: {info['duration']}s {info['width']}x{info['height']} ({info['orientation']})"
               f"{' HDR' if info['hdr'] else ''}")
     (work / "clips.json").write_text(json.dumps(infos, ensure_ascii=False, indent=1), "utf-8")
+
+    if not voice:
+        for f in ("voice_tight.wav", "subs_draft.json"):
+            (work / f).unlink(missing_ok=True)
+        (work / "transcript.json").write_text(json.dumps({"voice_file": None, "duration_raw": 0, "duration_tight": 0,
+                                                          "spans": [], "words": []}), "utf-8")
+        (work / "transcript.md").write_text("# Không có giọng đọc: video chỉ có nhạc nền\n", "utf-8")
+        print(f"\nXong (không có giọng). Thư mục làm việc: {work}")
+        return
 
     # --- voice ---
     raw, wav16 = work / "voice_raw.wav", work / "voice16.wav"

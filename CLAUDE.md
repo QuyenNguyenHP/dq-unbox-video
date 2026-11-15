@@ -10,7 +10,7 @@ For any request to write a script or to edit/build a video, follow the skill `.c
 
 ## House style (the channel owner's rules)
 - The user is never on camera: hands + product only. Tone: fun, energetic, fast.
-- Every video carries the DQ Tech logo (`assets/logo.png`) in the top-right corner. Never drop it unless asked.
-- Feature labels are rounded pills in the brand colours: orange `#F44911` and blue `#0891DE` (alternate them). The CTA pill is blue.
+- On-screen labels and the CTA are big yellow text with a black outline in every video (no coloured pills).
+- Tech videos carry the DQ Tech logo (`assets/logo.png`) in the top-right corner. Non-tech videos (travel, events, food...) get `"brand": false` in edit.json, which means no logo.
 - No emoji in on-screen text.
 - Finished videos go to `OUTPUT/` and to Google Drive `My Drive/DQ Video/OUTPUT` when Google Drive for desktop is installed.
