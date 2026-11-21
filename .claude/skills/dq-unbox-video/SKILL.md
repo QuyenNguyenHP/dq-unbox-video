@@ -151,6 +151,16 @@ When the folder has clips but no voice recording, or the user asks for a voiceov
   Voices: `en-US-EmmaNeural` (female, cheerful; the user's choice for English), `en-US-AvaNeural`, `en-US-AndrewNeural` (male), `vi-VN-HoaiMyNeural` / `vi-VN-NamMinhNeural` (Vietnamese; use `--lang vi`). tts.py needs internet (Microsoft Edge TTS). Then continue with steps 2-5 as usual; subtitles, labels and caption are in the voiceover's language.
 - **Music only**: skip the voiceover; segments alone set the length (aim 25-45s, cuts 1.5-3s on the strongest moments); leave `subtitles` empty, keep a hook and a CTA overlay. The music is louder automatically.
 
+## Mode D: daily-life vlog (video đời thường)
+
+For everyday clips (going out, swimming, walks, trips) the user wants the opposite of the 60s product format:
+- **As long as possible**: use nearly all usable footage, in recording order (DJI/phone file names carry the time). No 60s limit. Skip only unusable bits (blurry, upside down, lens covered).
+- **Keep the user's own speech in the clips**: run `analyze.py "<x>" --clip-speech` (add `--skip-sheets` if sheets exist). It transcribes each clip's original sound (cached in `_work/<x>/speech/`) and prints where the user talks. Every part where they talk goes in **at speed 1 with `"audio": true`**, from just before the first word to just after the last; don't cut inside their sentences.
+- Parts without talking: walking/travel at `speed` 2 (muted), action and underwater shots at speed 1. Short hook at the start (the most striking 2-3s), CTA at the end.
+- Audio: segments with `"audio": true` keep the clip sound (normalised); music plays everywhere and ducks automatically under the speech (`music_volume` defaults to 0.5 in this mode; `orig_volume` and per-segment `audio_volume` adjust the speech).
+- Subtitles: the render makes them automatically from the speech (`_work/<x>/subs_auto.json`), but recognition makes mistakes, so write corrected `subtitles` yourself (diacritics, names, numbers; "bẻ bơi" → "bể bơi", "tập chim" → "tập gym") and set `"speech_subs": false`. Mark place names you can't make out and tell the user instead of guessing.
+- `"brand": false` (no logo); keep the original ratio unless the user asks for 9:16.
+
 ## Revisions
 Edit `_work/<x>/edit.json` and re-run render only; there is no need to re-run analyze unless the voice file changed. To change the music: `"music": "<file in MUSIC>"` or `null` for none.
 

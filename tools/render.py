@@ -200,9 +200,20 @@ def render_segment(seg, clip, outdur, dst, draft):
     else:
         last = "[v0]"
     g += f";{last}tpad=stop_mode=clone:stop_duration={outdur:.3f},trim=duration={outdur:.3f},setsar=1,format=yuv420p[v]"
-    run([FFMPEG, "-y", "-v", "error", "-ss", f"{src:.3f}", "-t", f"{need + 0.2:.3f}", "-i", clip["path"],
-         "-filter_complex", g, "-map", "[v]", "-an", "-c:v", "libx264", "-preset", "ultrafast" if draft else "veryfast",
-         "-crf", "26" if draft else "17", "-r", str(FPS), dst])
+    # âm thanh: giữ tiếng gốc của clip (lời người quay nói) khi "audio": true và không tua; còn lại là im lặng
+    keep = bool(seg.get("audio")) and clip.get("has_audio") and abs(speed - 1) < 1e-3
+    if keep:
+        ain = ["-ss", f"{src:.3f}", "-t", f"{need + 0.2:.3f}", "-i", clip.get("source", clip["path"])]
+        av = float(seg.get("audio_volume", 1.0))
+        g += (f";[1:a]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,"
+              f"volume={av},afade=t=in:d=0.04,afade=t=out:st={max(0, outdur - 0.06):.3f}:d=0.06,"
+              f"apad,atrim=0:{outdur:.3f}[a]")
+    else:
+        ain = ["-f", "lavfi", "-t", f"{outdur:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
+        g += f";[1:a]atrim=0:{outdur:.3f}[a]"
+    run([FFMPEG, "-y", "-v", "error", "-ss", f"{src:.3f}", "-t", f"{need + 0.2:.3f}", "-i", clip["path"], *ain,
+         "-filter_complex", g, "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "ultrafast" if draft else "veryfast",
+         "-crf", "26" if draft else "17", "-r", str(FPS), "-c:a", "aac", "-b:a", "192k", "-ar", "48000", dst])
 
 
 def pick_music(edit, name):
@@ -273,6 +284,20 @@ def main():
     if not subs and (work / "subs_draft.json").exists():
         subs = json.loads((work / "subs_draft.json").read_text("utf-8"))
     subs = subs or []
+    # phụ đề tự động cho lời người quay nói trong clip (đoạn có "audio": true); lưu subs_auto.json để soát lại
+    from analyze import chunk_subs
+    auto, t0 = [], 0.0
+    for s, d in zip(segs, durs):
+        c = clips[s["clip"]]
+        if s.get("audio") and c.get("speech") and abs(float(s.get("speed", 1)) - 1) < 1e-3:
+            a0 = float(s.get("src", 0))
+            ws = [{"w": w["w"], "s": round(t0 + w["s"] - a0, 2), "e": round(t0 + w["e"] - a0, 2)}
+                  for sp in c["speech"] for w in sp["words"] if w["s"] >= a0 - 0.05 and w["e"] <= a0 + d + 0.05]
+            auto += chunk_subs(ws) if ws else []
+        t0 += d
+    (work / "subs_auto.json").write_text(json.dumps(auto, ensure_ascii=False, indent=1), "utf-8")
+    if auto and not edit.get("subtitles") and edit.get("speech_subs", True):
+        subs = subs + auto
     brand = bool(edit.get("brand", True))  # false = video không phải kỹ thuật: không logo
     # nhãn: mặc định chữ vàng to viền đen cho mọi video; "label_style": "pill" = khung bo tròn màu thương hiệu
     pills = edit.get("label_style", "yellow") == "pill"
@@ -281,36 +306,47 @@ def main():
     # --- âm thanh + xuất ---
     music = pick_music(edit, proj.name)
     has_voice = voice_d > 0 and (work / "voice_tight.wav").exists()
-    # không có giọng: nhạc là âm thanh chính nên to hơn
-    mv = float(edit.get("music_volume", CFG.get("music_volume", 0.22) if has_voice else 0.85))
+    has_orig = any(s.get("audio") for s in segs)  # lời nói gốc trong clip (vlog)
+    default_mv = 0.22 if has_voice else 0.5 if has_orig else 0.85
+    mv = float(edit.get("music_volume", CFG.get("music_volume", 0.22) if has_voice else default_mv))
     fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
-    voice_chain = (f"[1:a]{'atempo=%.4f,' % k if abs(k - 1) > 1e-3 else ''}highpass=f=80,afftdn=nf=-30,"
-                   f"acompressor=threshold=0.125:ratio=3:attack=5:release=120:makeup=2,"
-                   f"loudnorm=I=-14:TP=-1.5:LRA=9,{fmt},apad=whole_dur={D:.3f}")
     cmd = [FFMPEG, "-y", "-v", "error", "-i", "video.mp4"]
-    if not has_voice:
-        if music:
-            cmd += ["-stream_loop", "-1", "-i", str(music)]
-            graph = (f"[1:a]{fmt},atrim=0:{D:.3f},asetpts=N/SR/TB,volume={mv},afade=t=in:d=0.3,"
-                     f"afade=t=out:st={max(0, D - 1.5):.3f}:d=1.5,alimiter=limit=0.95[aout];")
-            print(f"Nhạc nền (không có giọng): {music.name}")
-        else:
-            cmd += ["-f", "lavfi", "-t", f"{D:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
-            graph = "[1:a]anull[aout];"
-    elif music:
+    graph, speech, nin = "", [], 1
+    if has_voice:
         cmd += ["-i", "voice_tight.wav"]
+        graph += (f"[{nin}:a]{'atempo=%.4f,' % k if abs(k - 1) > 1e-3 else ''}highpass=f=80,afftdn=nf=-30,"
+                  f"acompressor=threshold=0.125:ratio=3:attack=5:release=120:makeup=2,"
+                  f"loudnorm=I=-14:TP=-1.5:LRA=9,{fmt},apad=whole_dur={D:.3f}[vo];")
+        speech.append("[vo]")
+        nin += 1
+    if has_orig:
+        ov = float(edit.get("orig_volume", 1.0))
+        graph += (f"[0:a]{fmt},highpass=f=80,acompressor=threshold=0.1:ratio=3:attack=5:release=150:makeup=2,"
+                  f"loudnorm=I=-15:TP=-1.5:LRA=11,volume={ov},apad=whole_dur={D:.3f}[og];")
+        speech.append("[og]")
+    if len(speech) == 2:
+        graph += "[vo][og]amix=inputs=2:duration=first:normalize=0[sp];"
+    elif speech:
+        graph += f"{speech[0]}anull[sp];"
+    if music:
         cmd += ["-stream_loop", "-1", "-i", str(music)]
-        graph = (f"{voice_chain},asplit=2[vo][sc];"
-                 f"[2:a]{fmt},atrim=0:{D:.3f},asetpts=N/SR/TB,volume={mv},afade=t=in:d=0.4,"
-                 f"afade=t=out:st={max(0, D - 1.5):.3f}:d=1.5[mu];"
-                 f"[mu][sc]sidechaincompress=threshold=0.03:ratio=8:attack=15:release=350[mud];"
-                 f"[vo][mud]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[aout];")
-        print(f"Nhạc nền: {music.name}")
+        graph += (f"[{nin}:a]{fmt},atrim=0:{D:.3f},asetpts=N/SR/TB,volume={mv},afade=t=in:d=0.4,"
+                  f"afade=t=out:st={max(0, D - 1.5):.3f}:d=1.5[mu];")
+        nin += 1
+        if speech:
+            graph += ("[sp]asplit=2[sp1][sc];[mu][sc]sidechaincompress=threshold=0.02:ratio=12:attack=10:release=400[mud];"
+                      "[sp1][mud]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[aout];")
+        else:
+            graph += "[mu]alimiter=limit=0.95[aout];"
+        print(f"Nhạc nền: {music.name}" + (" (giữ lời nói gốc trong clip)" if has_orig else ""))
+    elif speech:
+        graph += "[sp]alimiter=limit=0.95[aout];"
     else:
-        cmd += ["-i", "voice_tight.wav"]
-        graph = f"{voice_chain},alimiter=limit=0.95[aout];"
+        cmd += ["-f", "lavfi", "-t", f"{D:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
+        graph += f"[{nin}:a]anull[aout];"
+        nin += 1
     # --- chữ (ASS) + nhãn bo tròn + logo ---
-    idx = 3 if (has_voice and music) else 2
+    idx = nin
     graph += "[0:v]ass=subs.ass:fontsdir=fonts[v0]"
     last = "[v0]"
     for j, (png, s0, s1, x, y) in enumerate(make_badges(edit.get("overlays", []), work, k, pills)):
@@ -343,9 +379,10 @@ def main():
         shutil.copy(cap, OUTPUT / f"{base}_caption.txt")
         print(f"Caption: {OUTPUT / f'{base}_caption.txt'}")
 
-    # ảnh kiểm tra: 1 khung mỗi 2.5s
+    # ảnh kiểm tra: 24 khung trải đều (1 khung mỗi 2.5s với video ngắn)
+    step = f"{max(2.5, D / 24):.2f}"
     run([FFMPEG, "-y", "-v", "error", "-i", "final.mp4", "-vf",
-         "select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,2.5)',scale=216:-2,drawtext=fontfile=fonts/font.ttf:text='%{eif\\:t\\:d}s':x=6:y=6:fontsize=24:"
+         "select='isnan(prev_selected_t)+gte(t-prev_selected_t\\," + step + ")',scale=216:-2,drawtext=fontfile=fonts/font.ttf:text='%{eif\\:t\\:d}s':x=6:y=6:fontsize=24:"
          "fontcolor=yellow:box=1:boxcolor=black@0.7,tile=8x3:padding=4:color=gray",
          "-fps_mode", "vfr", "-frames:v", "1", "-q:v", "4", "check.jpg"], cwd=work)
     print(f"Ảnh kiểm tra: {work / 'check.jpg'}")

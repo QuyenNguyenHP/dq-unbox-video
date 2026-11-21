@@ -136,6 +136,52 @@ def transcribe(wav16, prompt, model_name):
     return words
 
 
+_MODEL = {}
+
+
+def clip_speech(info, work, model_name):
+    """Tìm lời nói của người quay trong âm thanh gốc của clip (vlog). Lưu vào info["speech"].
+
+    Mỗi đoạn: {"s", "e", "text", "words": [{"w","s","e"}]} theo giây trong clip gốc. Có cache.
+    """
+    import os
+    import wave
+
+    import numpy as np
+    if not info.get("has_audio"):
+        info["speech"] = []
+        return
+    src = info.get("source", info["path"])
+    sdir = work / "speech"
+    sdir.mkdir(exist_ok=True)
+    cache = sdir / (Path(info["key"]).stem + ".json")
+    if cache.exists() and cache.stat().st_mtime > Path(src).stat().st_mtime:
+        info["speech"] = json.loads(cache.read_text("utf-8"))
+        return
+    wav = sdir / (Path(info["key"]).stem + ".wav")
+    run([FFMPEG, "-y", "-v", "error", "-i", src, "-vn", "-ac", "1", "-ar", "16000", wav])
+    if model_name not in _MODEL:
+        from faster_whisper import WhisperModel
+        _MODEL[model_name] = WhisperModel(model_name, device="cpu", compute_type="int8",
+                                          cpu_threads=os.cpu_count() or 4, download_root=str(ROOT / ".models"))
+    with wave.open(str(wav), "rb") as wf:
+        audio = np.frombuffer(wf.readframes(wf.getnframes()), dtype="<i2").astype(np.float32) / 32768.0
+    wav.unlink(missing_ok=True)
+    # VAD bật: âm thanh ngoài trời (gió, nước, xe) dễ làm mô hình "bịa" chữ
+    segs, _ = _MODEL[model_name].transcribe(audio, language=CFG.get("language", "vi"), word_timestamps=True,
+                                            vad_filter=True, beam_size=5, condition_on_previous_text=False)
+    out = []
+    for s in segs:
+        words = [{"w": w.word.strip(), "s": round(w.start, 2), "e": round(w.end, 2)} for w in (s.words or [])
+                 if w.word.strip()]
+        if not words or s.no_speech_prob > 0.6 or s.avg_logprob < -1.0 or len(words) < 2:
+            continue
+        out.append({"s": round(words[0]["s"], 2), "e": round(words[-1]["e"], 2), "text": s.text.strip(),
+                    "words": words})
+    cache.write_text(json.dumps(out, ensure_ascii=False), "utf-8")
+    info["speech"] = out
+
+
 def make_spans(words, total, max_gap, pad):
     spans = []
     for w in words:
@@ -243,6 +289,7 @@ def main():
     ap.add_argument("--lang", default=None, help="ngôn ngữ giọng đọc (mặc định theo config, 'vi')")
     ap.add_argument("--cut", action="append", default=[], help="bỏ đoạn giọng gốc từ-đến (giây), lặp lại được")
     ap.add_argument("--reuse", action="store_true", help="dùng lại kết quả nhận dạng lần trước (nhanh)")
+    ap.add_argument("--clip-speech", action="store_true", help="tìm lời nói trong âm thanh gốc của clip (vlog đời thường)")
     ap.add_argument("--variant", default=None, help="bản ngôn ngữ khác, vd. vi -> _work/<tên>/vi, xuất <tên>_VI.mp4")
     ap.add_argument("--voice", default=None, help="file giọng đọc nằm ngoài thư mục dự án (vd. giọng AI)")
     a = ap.parse_args()
@@ -273,9 +320,16 @@ def main():
         make_proxy(info, WORK / proj.name)  # proxy dùng chung cho mọi bản ngôn ngữ
         if not a.skip_sheets:
             info["sheets"], info["sheet_step"] = contact_sheets(info, sheets, i)
+        if a.clip_speech:
+            clip_speech(info, WORK / proj.name, a.model)
         infos[key] = info
+        talk = ""
+        if info.get("speech"):
+            talk = f"  | lời nói: {sum(x['e'] - x['s'] for x in info['speech']):.1f}s"
         print(f"  [{i}] {key}: {info['duration']}s {info['width']}x{info['height']} ({info['orientation']})"
-              f"{' HDR' if info['hdr'] else ''}")
+              f"{' HDR' if info['hdr'] else ''}{talk}")
+        for sp in info.get("speech", []):
+            print(f"        {sp['s']:6.2f}-{sp['e']:6.2f}  {sp['text']}")
     (work / "clips.json").write_text(json.dumps(infos, ensure_ascii=False, indent=1), "utf-8")
 
     if not voice:
